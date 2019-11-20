@@ -25,6 +25,9 @@ def getDescription(link):
     soup = BeautifulSoup(page.content, "html.parser")
     #find the summary
     myDiv = soup.find("div", class_="summary_text")
+    myTitle = soup.find("div", class_="title_wrapper")
+    for child in myTitle.find_all("div"):
+        child.decompose()
     #strip the preceding spaces
     summary =str.lstrip(myDiv.text)
     #print the summary
