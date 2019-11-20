@@ -14,7 +14,11 @@ def IMDBSearch(term):
     #myDivs stores the information from the class "findSection" in the html
     myDivs = soup.find("div", class_="findSection")
     #links further refines this search and takes only the href starting with "title" and stores it in links
-    links = myDivs.select_one("a[href*=title]")
+    try :
+        links = myDivs.select_one("a[href*=title]")
+    except:
+        print("No movie found with that title")
+        return ""
     #this will return the first of the links stored in links
     return("imdb.com" + links.get('href'))
 
@@ -40,8 +44,12 @@ def searchDictionary(word):
     page = requests.get("https://www.merriam-webster.com/dictionary/" + word)
     soup = BeautifulSoup(page.content, "html.parser")
     myDiv = soup.find("span", class_="dtText")
-    for child in myDiv.find_all("span"):
-        child.decompose()
+    try:
+        for child in myDiv.find_all("span"):
+            child.decompose()
+    except:
+        print("No definition found")
+        return
     print(myDiv.text)
 
 def main():
@@ -63,7 +71,8 @@ def main():
         #gets the URL for the movie we're searching for
         movieLink = IMDBSearch(searchTerm)
         #prints the description of the movie we searched for
-        getDescription(movieLink)
+        if (len(movieLink) > 0):
+            getDescription(movieLink)
     else:
 
         search = input("Enter a word: ")
