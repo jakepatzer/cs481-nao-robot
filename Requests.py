@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 
-
+#169.254.211.14
 #param "term" is the formatted search criteria for IMDB
 
 def IMDBSearch(term):
@@ -33,11 +33,12 @@ def getDescription(link):
     myTitle = soup.find("div", class_="title_wrapper")
     for child in myTitle.find_all("div"):
         child.decompose()
-    print(myTitle.text)
+    summary = ""
+    summary = summary + str.lstrip(cleanString(myTitle.text))
     #strip the preceding spaces
-    summary = str.lstrip(myDiv.text)
+    summary = summary + str.lstrip(str(myDiv.text))
     #print the summary
-    print(summary)
+    return summary
 
 def searchDictionary(word):
 
@@ -50,7 +51,9 @@ def searchDictionary(word):
     except:
         print("No definition found")
         return
-    print(myDiv.text)
+    output = str(myDiv.text)
+    output = output.replace(':', '')
+    return str.lstrip(output)
 
 def getRecipeURL(foodItem):
 
@@ -70,24 +73,25 @@ def getRecipe(url):
     page = requests.get(url)
     soup = BeautifulSoup(page.content, "html.parser")
     mySection = soup.find("div", class_="recipe-shopper-wrapper")
+    ingredientList = ""
     try:
         ingredients = mySection.find_all("span", class_="ingredients-item-name")
-        print("----------Ingredients------------")
         for ingredient in ingredients:
-            nextLine = str.lstrip(ingredient.text)
-            print(nextLine)
+            nextLine = str.lstrip(cleanString(ingredient.text))
+            ingredientList = ingredientList + nextLine + "\n"
     except:
         mySection = soup.find("ul", class_="checklist dropdownwrapper list-ingredients-1")
         ingredients = mySection.find_all("span", class_="recipe-ingred_txt added")
         mySection = soup.find("ul", class_="checklist dropdownwrapper list-ingredients-2")
         ingredients2 = mySection.find_all("span", class_="recipe-ingred_txt added")
-        print("----------Ingredients------------")
         for ingredient in ingredients:
-            nextLine = str.lstrip(ingredient.text)
-            print(nextLine)
+            nextLine = str.lstrip(cleanString(ingredient.text))
+            ingredientList = ingredientList + nextLine + "\n"
         for ingredient in ingredients2:
-            nextLine = str.lstrip(ingredient.text)
-            print(nextLine)
+            nextLine = str.lstrip(cleanString(ingredient.text))
+            ingredientList = ingredientList + nextLine + "\n"
+
+    return ingredientList
 
 
 
@@ -96,33 +100,41 @@ def getDirections(url):
     page = requests.get(url)
     soup = BeautifulSoup(page.content, "html.parser")
     mySection = soup.find("section", class_="recipe-instructions recipe-instructions-new component container")
+    directionList = ""
     try:
         directions = mySection.find_all("div", class_="section-body")
-        print("----------Directions------------")
+        #print("----------Directions------------")
         for i in range(0, len(directions)):
             step = i + 1
-            nextLine = str.lstrip(directions[i].text)
-            print("Step " + str(step) + ": " + nextLine)
+            nextLine = str.lstrip(cleanString(directions[i].text))
+            directionList = directionList + "Step " + str(step) + ": " + nextLine + "\n"
     except:
         mySection = soup.find("div", class_="directions--section")
         directions = mySection.find_all("span", class_="recipe-directions__list--item")
-        print("----------Directions------------")
+        #print("----------Directions------------")
         for i in range(0, len(directions)):
             step = i + 1
-            nextLine = str.lstrip(directions[i].text)
+            nextLine = str.lstrip(cleanString(directions[i].text))
             if(len(nextLine) == 0):
                break
             else:
-               print("Step " + str(step) + ": " + nextLine)
+               directionList = directionList + "Step " + str(step) + ": " + nextLine + "\n"
+    return directionList
+
+def cleanString(input):
+
+    output = input.encode('ascii', 'ignore')
+    return output;
 
 def main():
 
     #Take in input from the user and format it as required for IMDB
     #Example: it chapter 2 -> it+chapter+2
-    searchType = input("What would you like to search?: Movie, Word or Recipe ")
+    searchType = raw_input("What would you like to search?: Movie, Word or Recipe ")
     str.capitalize(searchType)
+    output = ""
     if (searchType.lower() == 'movie'):
-        search = input("Search something: ")
+        search = raw_input("Search something: ")
         split = search.split(" ")
         searchTerm = ""
         for i in range(0, len(split)):
@@ -131,31 +143,29 @@ def main():
                 break
             searchTerm += split[i]
             searchTerm += "+"
-        #gets the URL for the movie we're searching for
         movieLink = IMDBSearch(searchTerm)
-        #prints the description of the movie we searched for
         if (len(movieLink) > 0):
-            getDescription(movieLink)
+            output = getDescription(movieLink)
     elif (searchType.lower() == 'word'):
 
-        search = input("Enter a word: ")
-        searchDictionary(search)
+        search = raw_input("Enter a word: ")
+        output = searchDictionary(search)
 
     else:
 
-        search = input("Enter a dish you'd like to hear about: ")
+        search = raw_input("Enter a dish you'd like to hear about: ")
         split = search.split(" ")
         searchTerm = ""
         for i in range(0, len(split)):
-            if  (i == len(split) - 1):
+            if (i == len(split) - 1):
                 searchTerm += split[i]
                 break
             searchTerm += split[i]
             searchTerm += "%20"
 
         recipeURL = getRecipeURL(searchTerm)
-        getRecipe(recipeURL)
-        getDirections(recipeURL)
-
+        output = "----------Ingredients---------\n" + getRecipe(recipeURL)
+        output = output + "\n -----------Directions----------- \n" + getDirections(recipeURL)
+    print output
 if __name__ == "__main__":
     main()
