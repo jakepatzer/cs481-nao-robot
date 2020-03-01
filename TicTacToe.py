@@ -2,7 +2,15 @@ import numpy as np
 import cv2
 import imutils
 
+
 def sortFourPoints(points, flip=False):
+    """
+    Sort four points based on their coordinates
+
+    :param points: A list of points to sort. Points are in [x,y]-format by default.
+    :param flip: Indicates that points are in [y,x]-format
+    :return: The points, sorted in order of [top left, top right, bottom left, bottom right]
+    """
 
     # Find the sums and differences of each point's x,y values
     sums = []
@@ -22,7 +30,15 @@ def sortFourPoints(points, flip=False):
 
     return [topLeft, topRight, bottomLeft, bottomRight]
 
+
 def fourPointTransform(image, points):
+    """
+    Crop an image, perform a four point transform, and return the resulting image
+
+    :param image: The image to crop/transform
+    :param points: The coordinates of four corners for the desired transformation
+    :return: The resulting image after transformation
+    """
 
     topLeft, topRight, bottomLeft, bottomRight = sortFourPoints(points)
 
@@ -49,13 +65,20 @@ def fourPointTransform(image, points):
 
 
 def isolatePaper(image, debug=False):
+    """
+    Isolate a sheet of paper from an image
+
+    :param image: The image containing the paper to isolate
+    :param debug: If true, displays step-by-step visuals for debugging
+    :return: A cropped and perspective-corrected image containing the paper
+    """
 
     # Convert image to grayscale and apply a gaussian blur to assist edge detection
     grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     grayscale = cv2.GaussianBlur(grayscale, (5, 5), 0)
 
     # Find edges in image
-    edges = cv2.Canny(grayscale, 75, 200)
+    edges = cv2.Canny(grayscale, 25, 100)
 
     if debug:
         cv2.imshow("Image", image)
@@ -84,7 +107,6 @@ def isolatePaper(image, debug=False):
             break
 
     if debug:
-        # check here first
         cv2.drawContours(image, [boardContour], -1, (0, 255, 0), 2)
         cv2.imshow("Outline", image)
         cv2.waitKey(0)
@@ -100,21 +122,14 @@ def isolatePaper(image, debug=False):
 
     return paper
 
-def findExtremePoints(image, rho, theta):
 
-    height, width = image.shape
+def mergeLines(lines):
+    """
+    Combine lines that are similar to one-another
 
-    if theta > np.pi * 45 / 180 and theta < np.pi * 135 / 180:
-        point1 = [0, rho / np.sin(theta)]
-        point2 = [width, -1 * width / np.tan(theta) + rho / np.sin(theta)]
-    else:
-        point1 = [rho / np.cos(theta), 0]
-        point2 = [-1 * height / np.tan(theta) + rho / np.cos(theta), height]
-
-    return point1, point2
-
-
-def mergeLines(image, lines):
+    :param lines: The lines to combine
+    :return: The new set of lines
+    """
 
     result = []
 
@@ -122,12 +137,10 @@ def mergeLines(image, lines):
 
         line = lines[i]
 
-        rho = line[0][0]
-        theta = line[0][1]
+        rho = line[0][0]  # Distance of line
+        theta = line[0][1]  # Angle of line
 
-        if rho == 0 and theta == -100: continue
-
-        point1, point2 = findExtremePoints(image, rho, theta)
+        if rho == 0 and theta == -100: continue  # Line has been previously merged
 
         for j in range(i+1, len(lines)):
 
@@ -136,6 +149,8 @@ def mergeLines(image, lines):
             rho2 = line2[0][0]
             theta2 = line2[0][1]
 
+            # Difference in distance is less than 50 pixels
+            # Difference in angle is less than 10 degrees
             if abs(rho2 - rho) < 50 and abs(theta2 - theta) < np.pi*10/180:
                 lines[j][0][0] = 0
                 lines[j][0][1] = -100
@@ -146,20 +161,19 @@ def mergeLines(image, lines):
 
 
 def findExtremeLines(lines):
+    """
+    Condense a list of lines down to only four
+
+    :param lines: The list of lines to condense
+    :return: A list containing only four lines
+    """
 
     leftV = [[1000, 1000]]
     rightV = [[-1000, -1000]]
     topH = [[1000, 1000]]
     bottomH = [[-1000, -1000]]
-
-    topY = 100000
-    topX = 0
-    bottomY = 0
-    bottomX = 0
     leftX = 100000
-    leftY = 0
     rightX = 0
-    rightY = 0
 
     for line in lines:
 
@@ -167,13 +181,15 @@ def findExtremeLines(lines):
         theta = line[0][1]
 
         xIntercept = rho/np.cos(theta)
-        yIntercept = rho/(np.cos(theta)*np.sin(theta))
 
+        # Line is horizontal
         if theta > np.pi*45/180 and theta < np.pi*135/180:
             if rho < topH[0][0]:
                 topH = line
             if rho > bottomH[0][0]:
                 bottomH = line
+
+        # Line is vertical
         else:
             if xIntercept > rightX:
                 rightV = line
@@ -186,6 +202,13 @@ def findExtremeLines(lines):
 
 
 def getIntersection(line1, line2):
+    """
+    Calculate the intersection of two lines
+
+    :param line1: The first line
+    :param line2: The second line
+    :return: The intersection in [y,x]-format
+    """
 
     rho1, theta1 = line1[0]
     rho2, theta2 = line2[0]
@@ -206,6 +229,13 @@ def getIntersection(line1, line2):
 
 
 def getAllIntersections(vLines, hLines):
+    """
+    Calculate the intersections of two horizontal and two vertical lines
+
+    :param vLines: The vertical lines
+    :param hLines: The horizontal lines
+    :return: The intersection points in [y,x]-format, sorted in order of [top left, top right, bottom left, bottom right]
+    """
 
     intersections = []
 
@@ -217,12 +247,19 @@ def getAllIntersections(vLines, hLines):
 
 
 def getCharacterContour(space, debug=False):
+    """
+    Retrieve the contour of a character
+
+    :param space: The image containing the character
+    :param debug: If true, displays step-by-step visuals for debugging
+    :return: The contour of the character, or None if no character is detected
+    """
     
     contours = cv2.findContours(space, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     contours = imutils.grab_contours(contours)
 
-    # Sort contours by area
-    contours = sorted(contours, key=cv2.contourArea)
+    # Sort contours by area, descending
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
 
     totalArea = space.shape[0] * space.shape[1]
 
@@ -241,28 +278,60 @@ def getCharacterContour(space, debug=False):
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
-        if cv2.contourArea(cv2.convexHull(contour)) > totalArea * 0.95:
+        if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.01:
             break
 
-        if cv2.contourArea(cv2.convexHull(contour)) > totalArea * 0.01:
+        if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.95:
             return contour
 
     return None
 
 
-def isolateGameBoard(image, debug=False):
+def analyzeSpace(space, debug=False):
+    """
+    Determine the contents of a game space
+
+    :param space: Image of the space to analyze
+    :param debug: If true, displays step-by-step visuals for debugging
+    :return: The content of the space; one of {'X', 'O', ''}
+    """
+
+    character = getCharacterContour(space, debug)
+
+    if character is None:
+        return ''
+
+    contourArea = cv2.contourArea(character)
+    hull = cv2.convexHull(character)
+    hullArea = cv2.contourArea(hull)
+
+    solidity = float(contourArea) / hullArea
+
+    if solidity > 0.75:
+        return 'O'
+    else:
+        return 'X'
+
+
+def analyzeGameBoard(image, debug=False):
+    """
+    Determine the current state of the game board. Return a 2d array specifiying the contents of each of the nine
+    spaces, one of {'X', 'O', ''}
+
+    :param image: Image of the game board on a blank background
+    :param debug: If true, displays step-by-step visuals for debugging
+    :return: A 2d array specifiying the contents of each of the nine spaces, one of {'X', 'O', ''}
+    """
 
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image = cv2.GaussianBlur(image, (5, 5), 0)
     binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
-    #binary2 = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)[1]
 
     edges = cv2.Canny(binary, 1, 254)
 
     if debug:
         cv2.imshow("Image", image)
         cv2.imshow("Binary", binary)
-        #cv2.imshow("binary2", binary2)
         cv2.imshow("Edges", edges)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
@@ -304,35 +373,26 @@ def isolateGameBoard(image, debug=False):
     boardEdges = cv2.Canny(out, 1, 254)
 
     lines = cv2.HoughLines(boardEdges, 2, np.pi/90, 150)
-    # lines = cv2.HoughLinesP(edges, 2, np.pi/180, 100, maxLineGap=100)
 
-    """
-    for line in lines:
-        for x1, y1, x2, y2 in line:
-            cv2.line(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    """
-
-    lines = mergeLines(image, lines)
+    lines = mergeLines(lines)
     vLines, hLines = findExtremeLines(lines)
     lines = vLines + hLines
 
-    for line in lines:
-        for rho, theta in line:
-            a = np.cos(theta)
-            b = np.sin(theta)
-            x0 = a * rho
-            y0 = b * rho
-            x1 = int(x0 + 1000 * (-b))
-            y1 = int(y0 + 1000 * (a))
-            x2 = int(x0 - 1000 * (-b))
-            y2 = int(y0 - 1000 * (a))
-            cv2.line(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-
     if debug:
+        for line in lines:
+            for rho, theta in line:
+                a = np.cos(theta)
+                b = np.sin(theta)
+                x0 = a * rho
+                y0 = b * rho
+                x1 = int(x0 + 1000 * (-b))
+                y1 = int(y0 + 1000 * (a))
+                x2 = int(x0 - 1000 * (-b))
+                y2 = int(y0 - 1000 * (a))
+                cv2.line(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
         cv2.imshow("i", image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-
 
     # Remove the game board from the image
     binary[out == 0] = 255
@@ -343,7 +403,6 @@ def isolateGameBoard(image, debug=False):
         cv2.imshow('binary', binary)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-
 
     tlPoint, trPoint, blPoint, brPoint = getAllIntersections(vLines, hLines)
     upperMiddle = int((tlPoint[0] + trPoint[0]) / 2)
@@ -356,11 +415,14 @@ def isolateGameBoard(image, debug=False):
 
     spaces = np.empty((3, 3), dtype=object)
 
-    image[tlPoint[0], tlPoint[1]]=255
-    image[trPoint[0], trPoint[1]] = 255
-    cv2.imshow('h', image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    if debug:
+        image[tlPoint[0], tlPoint[1]] = 255
+        image[trPoint[0], trPoint[1]] = 255
+        image[blPoint[0], blPoint[1]] = 255
+        image[brPoint[0], brPoint[1]] = 255
+        cv2.imshow('h', image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
     spaces[0][0] = binary[0:tlPoint[0], 0:tlPoint[1]]
     spaces[0][1] = binary[0:upperMiddle, tlPoint[1]:trPoint[1]]
@@ -376,26 +438,12 @@ def isolateGameBoard(image, debug=False):
 
     for i in range(3):
         for j in range(3):
-            
-            character = getCharacterContour(spaces[i][j], debug)
+            gameState[i][j] = analyzeSpace(spaces[i][j], debug)
 
-            if character is None:
-                gameState[i][j] = ''
-                continue
+    if debug:
+        print(gameState)
 
-            area = cv2.contourArea(character)
-            hull = cv2.convexHull(character)
-            hull_area = cv2.contourArea(hull)
-
-            solidity = float(area)/hull_area
-
-            if solidity > 0.75:
-                gameState[i][j] = 'O'
-            else:
-                gameState[i][j] = 'X'
-
-
-    print(gameState)
+    return gameState
 
 
 def getGameState(imagePath, debug=False):
@@ -406,8 +454,8 @@ def getGameState(imagePath, debug=False):
     image = cv2.imread(imagePath)
     image = cv2.resize(image, (1008, 756))
 
-    paper = isolatePaper(image, False)
-    board = isolateGameBoard(paper, True)
+    paper = isolatePaper(image, debug)
+    return analyzeGameBoard(paper, debug)
 
 
-getGameState("C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\src\\test.jpg", True)
+getGameState("C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\src\\image_0.jpg", True)
