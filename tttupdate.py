@@ -136,24 +136,16 @@ def isolatePaper(image, debug=False):
         perimeter = cv2.arcLength(contour, True)
         approximation = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
 
+        cv2.drawContours(image, [approximation], -1, (0, 255, 0), 2)
+
         # Check if contour approximation is rectangular
         if len(approximation) == 4:
             boardContour = approximation
             break
 
-    if debug:
-        cv2.drawContours(image, [boardContour], -1, (0, 255, 0), 2)
-        cv2.imshow("Outline", image)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+    cv2.drawContours(image, [boardContour], -1, (0, 255, 0), 2)
 
     paper = fourPointTransform(image, boardContour.reshape(4, 2))
-
-    if debug:
-        cv2.imshow("Original", image)
-        cv2.imshow("Isolated", paper)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
 
     return paper
 
@@ -271,7 +263,6 @@ def getAllIntersections(vLines, hLines):
     :param hLines: The horizontal lines
     :return: The intersection points in [y,x]-format, sorted in order of [top left, top right, bottom left, bottom right]
     """
-
     intersections = []
 
     for vLine in vLines:
@@ -310,7 +301,7 @@ def getCharacterContour(space, debug=False):
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
-        if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.01:
+        if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.05:
             break
 
         if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.95:
@@ -331,7 +322,7 @@ def analyzeSpace(space, debug=False):
     character = getCharacterContour(space, debug)
 
     if character is None:
-        return ''
+        return ' '
 
     contourArea = cv2.contourArea(character)
     hull = cv2.convexHull(character)
@@ -348,7 +339,7 @@ def analyzeSpace(space, debug=False):
 def analyzeGameBoard(image, debug=False):
     """
     Determine the current state of the game board. Return a 2d array specifiying the contents of each of the nine
-    spaces, one of {'X', 'O', ''}
+    spaces, one of {'X', 'O', ' '}
 
     :param image: Image of the game board on a blank background
     :param debug: If true, displays step-by-step visuals for debugging
@@ -376,9 +367,13 @@ def analyzeGameBoard(image, debug=False):
 
     # Find the contour with the largest area, which should be the game board
     board2 = max(contours, key=cv2.contourArea)
-    contours.remove(board2)
+    #contours.remove(board2)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    contours = contours[1:]
     board = max(contours, key=cv2.contourArea)
-    contours.remove(board)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    contours = contours[1:]
+    #contours.remove(board)
 
     mask = np.zeros_like(binary)
     cv2.drawContours(mask, [board], 0, 255, -1)
@@ -404,7 +399,7 @@ def analyzeGameBoard(image, debug=False):
 
     boardEdges = cv2.Canny(out, 1, 254)
 
-    lines = cv2.HoughLines(boardEdges, 2, np.pi / 90, 150)
+    lines = cv2.HoughLines(boardEdges, 2, np.pi / 90, 100)
 
     lines = mergeLines(lines)
     vLines, hLines = findExtremeLines(lines)
@@ -466,7 +461,7 @@ def analyzeGameBoard(image, debug=False):
     spaces[2][1] = binary[lowerMiddle:yMax, blPoint[1]:brPoint[1]]
     spaces[2][2] = binary[brPoint[0]:yMax, brPoint[1]:xMax]
 
-    gameState = np.full((3, 3), '')
+    gameState = np.full((3, 3), ' ')
 
     for i in range(3):
         for j in range(3):
@@ -480,7 +475,7 @@ def getGameState(imagePath, debug=False):
     # in order to remove board for space analysis
 
     image = cv2.imread(imagePath)
-    image = cv2.resize(image, (1008, 756))
+    #image = cv2.resize(image, (1008, 756))
 
     paper = isolatePaper(image, debug)
     return analyzeGameBoard(paper, debug)
@@ -496,10 +491,10 @@ def randomizer(diff):
 
 
 def switch_piece(piece):
-    if piece == "X":
-        return "O"
+    if piece == 'X':
+        return 'O'
     else:
-        return "X"
+        return 'X'
 
 
 def win_conditions(gameboard, piece):
@@ -530,7 +525,7 @@ def fill_random(expectedResult, piece):
     while True:
         randr = rand.randrange(0, 3)
         randc = rand.randrange(0, 3)
-        if expectedResult[randr][randc] == " ":
+        if expectedResult[randr][randc] == ' ':
             expectedResult[randr][randc] = piece
             tts.say("Please place my piece at row " + randr + " in column " + randc)
             return
@@ -543,7 +538,7 @@ def starting_conditions():
     r = sr.Recognizer()
     record_path = 'record.wav'
     order = True
-    piece = "X"
+    piece = 'X'
     diff = 50
     while (True):
         tts.say("Would you like to go first or second?")
@@ -571,12 +566,12 @@ def starting_conditions():
         with sr.AudioFile("record.wav") as source:
             audio_data = r.record(source)
             output = r.recognize_google(audio_data)
-            if "X" in str(output):
+            if 'X' in str(output):
                 tts.say("Alright, I'll play as O")
                 break
-            elif "O" in str(output):
+            elif 'O' in str(output):
                 tts.say("Alright, I'll play as X")
-                piece = "O"
+                piece = 'O'
                 break
             else:
                 tts.say("Sorry, I don't know what you mean.")
@@ -777,33 +772,18 @@ def get_in_position():
     aLegs[0] = -60.0 * almath.TO_RAD  # LHipYawPitch
     motionProxy.setAngles(jLegs, aLegs, 0.1)
     time.sleep(2)
+    
     tmp1 = []
     tmp1.append("HeadPitch")
     tmp2 = []
     tmp2.append(-10 * almath.TO_RAD)
+    
     motionProxy.setAngles(tmp1, tmp2, 0.25)
     time.sleep(3)
     aLegs[0] = 0.0 * almath.TO_RAD  # LHipYawPitch
     motionProxy.setAngles(jLegs, aLegs, 0.15)
     time.sleep(1)
-    # extend legs
-    aLegs[2] = 0.0 * almath.TO_RAD  # LHipPitch
-    aLegs[3] = 0.0 * almath.TO_RAD  # LKneePitch
-    aLegs[4] = 0.0 * almath.TO_RAD  # LAnklePitch
-    aLegs[7] = 0.0 * almath.TO_RAD  # RHipPitch
-    aLegs[8] = 0.0 * almath.TO_RAD  # RKneePitch
-    aLegs[9] = 0.0 * almath.TO_RAD  # RAnklePitch
-    motionProxy.setAngles(jLegs, aLegs, 0.2)
-    # fix arms
-    aArms[0] = 17.0 * almath.TO_RAD  # RShoulderPitch
-    aArms[2] = 0.0 * almath.TO_RAD  # RElbowYaw
-    aArms[4] = 90.0 * almath.TO_RAD  # RWristYaw
-    aArms[6] = 17.0 * almath.TO_RAD  # LShoulderPitch
-    aArms[8] = 0.0 * almath.TO_RAD  # LElbowYaw
-    aArms[10] = -90.0 * almath.TO_RAD  # LWristYaw
-    motionProxy.setAngles(jArms, aArms, 0.25)
-    
-    time.sleep(5)
+
 
 
 def stand_up():
@@ -819,11 +799,8 @@ def stand_up():
 def tic_tac_toe_game():
     tts = ALProxy("ALTextToSpeech")
     img = ALProxy("ALPhotoCapture")
-    img.setResolution(2)
+    img.setResolution(3)
     img.setPictureFormat("png")
-
-    #stand_up()
-    #return
     
     #player, piece, diff = starting_conditions()
     tts.say("Im now going to get in position")
@@ -833,11 +810,15 @@ def tic_tac_toe_game():
     fullImagePath = "/home/nao/recordings/camera/image.png"
     imagePath = "/home/nao/recordings/camera/"
     imageName = "image"
-
+    gameboard = 0
+    stand_up()
+    return
     img.takePicture(imagePath, imageName, True)
+
     gameboard = getGameState(fullImagePath, False)
     expectedResult = gameboard
     tts.say("I got it")
+    stand_up()
     return
     # play game until win conditions are true
     while True:
