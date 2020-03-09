@@ -74,14 +74,20 @@ def isolatePaper(image, debug=False):
     """
 
     # Convert image to grayscale and apply a gaussian blur to assist edge detection
+    kernel = np.ones((7, 7), np.uint8)
     grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    grayscale = cv2.GaussianBlur(grayscale, (5, 5), 0)
+    grayscale = cv2.GaussianBlur(grayscale, (3, 3), 0)
+    grayscale = cv2.erode(grayscale, kernel, iterations=1)
+    grayscale = cv2.dilate(grayscale, kernel, iterations=1)
 
     # Find edges in image
+    kernel = np.ones((3, 3), np.uint8)
     edges = cv2.Canny(grayscale, 25, 100)
+    edges = cv2.dilate(edges, kernel, iterations=1)
 
     if debug:
         cv2.imshow("Image", image)
+        cv2.imshow("Grayscale", grayscale)
         cv2.imshow("Edges", edges)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
@@ -101,14 +107,22 @@ def isolatePaper(image, debug=False):
         perimeter = cv2.arcLength(contour, True)
         approximation = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
 
+        if debug:
+            debugImage = np.copy(image)
+            cv2.drawContours(debugImage, [approximation], -1, (0, 255, 0), 2)
+            cv2.imshow("Outline", image)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+
         # Check if contour approximation is rectangular
         if len(approximation) == 4:
             boardContour = approximation
             break
 
     if debug:
-        cv2.drawContours(image, [boardContour], -1, (0, 255, 0), 2)
-        cv2.imshow("Outline", image)
+        debugImage = np.copy(image)
+        cv2.drawContours(debugImage, [boardContour], -1, (0, 255, 0), 2)
+        cv2.imshow("Outline", debugImage)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
@@ -273,15 +287,16 @@ def getCharacterContour(space, debug=False):
             print("area=", area)
             print("hull=", hull_area)
             print("Total=", totalArea)
-            cv2.drawContours(space, contours, 0, (128, 255, 60), 2)
-            cv2.imshow('space', space)
+            debugImage = np.copy(space)
+            cv2.drawContours(debugImage, [contour], 0, (128, 255, 60), 2)
+            cv2.imshow('space', debugImage)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
-        if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.01:
+        if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.05:
             break
 
-        if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.95:
+        if cv2.contourArea(cv2.convexHull(contour)) < totalArea * 0.85:
             return contour
 
     return None
@@ -293,13 +308,13 @@ def analyzeSpace(space, debug=False):
 
     :param space: Image of the space to analyze
     :param debug: If true, displays step-by-step visuals for debugging
-    :return: The content of the space; one of {'X', 'O', ''}
+    :return: The content of the space; one of {'X', 'O', ' '}
     """
 
     character = getCharacterContour(space, debug)
 
     if character is None:
-        return ''
+        return ' '
 
     contourArea = cv2.contourArea(character)
     hull = cv2.convexHull(character)
@@ -316,16 +331,27 @@ def analyzeSpace(space, debug=False):
 def analyzeGameBoard(image, debug=False):
     """
     Determine the current state of the game board. Return a 2d array specifiying the contents of each of the nine
-    spaces, one of {'X', 'O', ''}
+    spaces, one of {'X', 'O', ' '}
 
     :param image: Image of the game board on a blank background
     :param debug: If true, displays step-by-step visuals for debugging
-    :return: A 2d array specifiying the contents of each of the nine spaces, one of {'X', 'O', ''}
+    :return: A 2d array specifiying the contents of each of the nine spaces, one of {'X', 'O', ' '}
     """
 
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image = cv2.GaussianBlur(image, (5, 5), 0)
     binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
+
+    height, width = binary.shape
+
+    # Remove noise from edges of image
+    for i in range(0, width, 50):
+        binary = cv2.floodFill(binary, None, (i, 0), 255)[1]
+        binary = cv2.floodFill(binary, None, (i, height - 1), 255)[1]
+
+    for i in range(0, height, 50):
+        binary = cv2.floodFill(binary, None, (0, i), 255)[1]
+        binary = cv2.floodFill(binary, None, (width - 1, i), 255)[1]
 
     edges = cv2.Canny(binary, 1, 254)
 
@@ -343,10 +369,11 @@ def analyzeGameBoard(image, debug=False):
     contours = imutils.grab_contours(contours)
 
     # Find the contour with the largest area, which should be the game board
-    board2 = max(contours, key=cv2.contourArea)
-    contours.remove(board2)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    contours = contours[1:]
     board = max(contours, key=cv2.contourArea)
-    contours.remove(board)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    contours = contours[1:]
 
     mask = np.zeros_like(binary)
     cv2.drawContours(mask, [board], 0, 255, -1)
@@ -360,7 +387,7 @@ def analyzeGameBoard(image, debug=False):
         if debug:
             cv2.imshow('t', mask)
             cv2.imshow('h', out)
-            cv2.waitKey(0)
+            #cv2.waitKey(0)
             cv2.destroyAllWindows()
 
     if debug:
@@ -372,7 +399,7 @@ def analyzeGameBoard(image, debug=False):
 
     boardEdges = cv2.Canny(out, 1, 254)
 
-    lines = cv2.HoughLines(boardEdges, 2, np.pi/90, 150)
+    lines = cv2.HoughLines(boardEdges, 2, np.pi/90, 100)
 
     lines = mergeLines(lines)
     vLines, hLines = findExtremeLines(lines)
@@ -404,37 +431,39 @@ def analyzeGameBoard(image, debug=False):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+    leftExt = board[board[:, :, 0].argmin()][0][0]
+    rightExt = board[board[:, :, 0].argmax()][0][0]
+    topExt = board[board[:, :, 1].argmin()][0][1]
+    bottomExt = board[board[:, :, 1].argmax()][0][1]
+
     tlPoint, trPoint, blPoint, brPoint = getAllIntersections(vLines, hLines)
     upperMiddle = int((tlPoint[0] + trPoint[0]) / 2)
     middleLeft = int((tlPoint[1] + blPoint[1]) / 2)
     middleRight = int((trPoint[1] + brPoint[1]) / 2)
     lowerMiddle = int((blPoint[0] + brPoint[0]) / 2)
 
-    yMax = binary.shape[0] - 1
-    xMax = binary.shape[1] - 1
-
     spaces = np.empty((3, 3), dtype=object)
 
     if debug:
-        image[tlPoint[0], tlPoint[1]] = 255
-        image[trPoint[0], trPoint[1]] = 255
-        image[blPoint[0], blPoint[1]] = 255
-        image[brPoint[0], brPoint[1]] = 255
+        image[tlPoint[0], tlPoint[1]] = 127
+        image[trPoint[0], trPoint[1]] = 127
+        image[blPoint[0], blPoint[1]] = 127
+        image[brPoint[0], brPoint[1]] = 127
         cv2.imshow('h', image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-    spaces[0][0] = binary[0:tlPoint[0], 0:tlPoint[1]]
-    spaces[0][1] = binary[0:upperMiddle, tlPoint[1]:trPoint[1]]
-    spaces[0][2] = binary[0:trPoint[0], trPoint[1]:xMax]
-    spaces[1][0] = binary[tlPoint[0]:blPoint[0], 0:middleLeft]
+    spaces[0][0] = binary[topExt:tlPoint[0], leftExt:tlPoint[1]]
+    spaces[0][1] = binary[topExt:upperMiddle, tlPoint[1]:trPoint[1]]
+    spaces[0][2] = binary[topExt:trPoint[0], trPoint[1]:rightExt]
+    spaces[1][0] = binary[tlPoint[0]:blPoint[0], leftExt:middleLeft]
     spaces[1][1] = binary[upperMiddle:lowerMiddle, middleLeft:middleRight]
-    spaces[1][2] = binary[trPoint[0]:brPoint[0], middleRight:xMax]
-    spaces[2][0] = binary[blPoint[0]:yMax, 0:blPoint[1]]
-    spaces[2][1] = binary[lowerMiddle:yMax, blPoint[1]:brPoint[1]]
-    spaces[2][2] = binary[brPoint[0]:yMax, brPoint[1]:xMax]
+    spaces[1][2] = binary[trPoint[0]:brPoint[0], middleRight:rightExt]
+    spaces[2][0] = binary[blPoint[0]:bottomExt, leftExt:blPoint[1]]
+    spaces[2][1] = binary[lowerMiddle:bottomExt, blPoint[1]:brPoint[1]]
+    spaces[2][2] = binary[brPoint[0]:bottomExt, brPoint[1]:rightExt]
 
-    gameState = np.full((3,3), '')
+    gameState = np.full((3,3), ' ')
 
     for i in range(3):
         for j in range(3):
@@ -448,14 +477,140 @@ def analyzeGameBoard(image, debug=False):
 
 def getGameState(imagePath, debug=False):
 
-    # calibrate at beginning of game
-    # in order to remove board for space analysis
-
     image = cv2.imread(imagePath)
-    image = cv2.resize(image, (1008, 756))
-
+    image = cv2.resize(image, (1280, 960))
     paper = isolatePaper(image, debug)
     return analyzeGameBoard(paper, debug)
 
 
-getGameState("C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\src\\image_0.jpg", True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##################################################
+#################### Tests #######################
+##################################################
+
+
+
+expected = [
+
+    [],
+    [],
+    [],
+    [],
+
+    [
+        [' ', ' ', ' '],
+        [' ', ' ', ' '],
+        [' ', ' ', ' ']
+    ],
+
+    [
+        [' ', ' ', ' '],
+        [' ', ' ', ' '],
+        [' ', ' ', ' ']
+    ],
+
+    [
+        [' ', ' ', ' '],
+        [' ', ' ', ' '],
+        [' ', ' ', ' ']
+    ],
+
+    [
+        [' ', ' ', ' '],
+        [' ', ' ', ' '],
+        [' ', ' ', ' ']
+    ],
+
+    [
+        [' ', ' ', ' '],
+        ['X', 'O', ' '],
+        ['X', ' ', ' ']
+    ],
+
+    [
+        ['X', 'X', 'O'],
+        ['O', 'X', 'X'],
+        [' ', ' ', 'O']
+    ],
+
+    [
+        ['X', 'X', 'O'],
+        ['O', 'X', 'X'],
+        [' ', ' ', 'O']
+    ],
+
+    [
+        ['O', 'X', 'X'],
+        ['X', 'O', 'O'],
+        [' ', ' ', 'X']
+    ],
+
+    [
+        ['O', 'X', 'X'],
+        ['X', 'O', 'O'],
+        [' ', ' ', 'X']
+    ]
+
+]
+
+for i in range(4, 9):
+    try:
+        result = getGameState("C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\tst\\image" + str(i) + ".png", False).tolist()
+        if result != expected[i]:
+            print("image " + str(i) + ":")
+            print(result[0])
+            print(result[1])
+            print(result[2])
+            print
+            print("Expected: ")
+            print(expected[i][0])
+            print(expected[i][1])
+            print(expected[i][2])
+            print
+            getGameState(
+                "C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\tst\\image" + str(i) + ".png",
+                True)
+    except:
+        print "Image " + str(i) + " failed!"
+        getGameState(
+            "C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\tst\\image" + str(i) + ".png",
+            True)
+        raise
+
+for i in range(9, 12):
+    try:
+        result = getGameState("C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\tst\\image" + str(i) + ".jpg", False).tolist()
+        if result != expected[i]:
+            print("image " + str(i) + ":")
+            print(result[0])
+            print(result[1])
+            print(result[2])
+            print
+            print("Expected: ")
+            print(expected[i][0])
+            print(expected[i][1])
+            print(expected[i][2])
+            print
+            getGameState(
+                "C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\tst\\image" + str(i) + ".jpg",
+                True)
+    except:
+        print "Image " + str(i) + " failed!"
+        getGameState(
+            "C:\\Users\\p4web\\OneDrive\\Documents\\CWU\\CWU\\Project\\cs481-nao-robot\\tst\\image" + str(i) + ".jpg",
+            True)
+        raise
